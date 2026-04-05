@@ -45,6 +45,29 @@ AVAILABLE_MODELS = ["ARIMA", "Prophet", "XGBoost", "LSTM", "HoltWinters", "ETS"]
 # ─────────────────────────────────────────────
 # Lifespan
 # ─────────────────────────────────────────────
+def _warmup_imports() -> None:
+    """Pre-import heavy libraries so the first /api/forecast request is fast
+    and the healthcheck doesn't race against cold-import time."""
+    import time
+    libs = [
+        ("numpy", "numpy"),
+        ("pandas", "pandas"),
+        ("statsmodels", "statsmodels.tsa.arima.model"),
+        ("scikit-learn", "sklearn.ensemble"),
+        ("xgboost", "xgboost"),
+        ("prophet", "prophet"),
+        ("tensorflow", "tensorflow"),
+    ]
+    for label, module in libs:
+        t = time.perf_counter()
+        try:
+            import importlib
+            importlib.import_module(module)
+            logger.info(f"  ✓ {label} loaded in {(time.perf_counter()-t)*1000:.0f}ms")
+        except ImportError as e:
+            logger.warning(f"  ✗ {label} not available: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Kast AI Forecast Engine v{VERSION} starting…")
@@ -52,6 +75,13 @@ async def lifespan(app: FastAPI):
         logger.info("API key authentication ENABLED.")
     else:
         logger.info("API key authentication DISABLED (set KAST_API_KEY to enable).")
+
+    # Pre-warm heavy imports in a thread so the event loop stays free
+    import asyncio
+    logger.info("Pre-warming ML libraries…")
+    await asyncio.get_event_loop().run_in_executor(None, _warmup_imports)
+    logger.info("All libraries ready. Server accepting requests.")
+
     yield
     logger.info("Kast AI Forecast Engine shutting down.")
 
