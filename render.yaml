@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: kast-ai-forecast
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # $7/month — no spin-down
+    healthCheckPath: /health
+    envVars:
+      - key: ENV
+        value: prod
+      - key: WORKERS
+        value: "1"
+      - key: KAST_API_KEY
+        generateValue: true   # auto-generated secret
+      - key: CORS_ORIGINS
+        value: "https://your-lovable-app.lovable.app"
